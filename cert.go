@@ -37,6 +37,7 @@ func searchPkcs8(searchpath, keyword string) (*tls.Certificate, error) {
 				continue
 			}
 
+			log.Printf("using certificate file [%v]", f)
 			return cert, nil
 		}
 	}

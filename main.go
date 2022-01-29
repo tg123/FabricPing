@@ -120,7 +120,7 @@ func fabricping(conn net.Conn, tlsconf *tls.Config, interval time.Duration, time
 		},
 	})
 	if err != nil {
-		log.Fatalf("fabric level handshake failed, err %v", err)
+		log.Fatalf("fabric level handshake failed, error: %v", err)
 	}
 	defer c.Close()
 	go c.Wait()
@@ -133,7 +133,7 @@ func fabricping(conn net.Conn, tlsconf *tls.Config, interval time.Duration, time
 			defer cancel()
 			d, err := c.Ping(ctx)
 			if err != nil {
-				log.Printf("fabric heartbeat error %v", err)
+				log.Printf("fabric heartbeat error: %v", err)
 				return
 			}
 
@@ -217,15 +217,16 @@ Ping Lease:   FabricPing -l auto 10.0.0.4:1026
 							return nil, fmt.Errorf("search cert return error: %v", err)
 						}
 
-						log.Printf("using cert %v", fmt.Sprintf("%x", sha1.Sum(cert.Certificate[0])))
+						log.Printf("using certificate thumbprint [%v]", fmt.Sprintf("%x", sha1.Sum(cert.Certificate[0])))
 						return cert, nil
 					}
 
 					for _, remotetp := range remotetps {
 						if remotetp != "" {
+							log.Printf("discovering certificate on machine with thumbprint [%v]", remotetp)
 							cert, err := searchCert(remotetp)
-
 							if err != nil {
+								log.Printf("did not find certifcate thumbprint [%v], error: %v", remotetp, err)
 								continue
 							}
 
@@ -249,6 +250,7 @@ Ping Lease:   FabricPing -l auto 10.0.0.4:1026
 
 			timeout := c.Duration("timeout")
 			interval := c.Duration("interval")
+			certSearchPath = c.String("cert-path")
 
 			log.Printf("start fabric ping target: %v, timeout %v", addr, timeout)
 
