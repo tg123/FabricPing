@@ -55,7 +55,7 @@ func guessLocalIp() (string, error) {
 	return "", fmt.Errorf("no ip found")
 }
 
-func leaseping(conn net.Conn, tlsconf *tls.Config, interval time.Duration, timeout time.Duration, leaseaddr string) error {
+func leaseping(conn net.Conn, tlsconf *tls.Config, interval time.Duration, timeout time.Duration, leaseaddr string, count int) error {
 	config := lease.AgentConfig{
 		TLS: tlsconf,
 	}
@@ -93,6 +93,8 @@ func leaseping(conn net.Conn, tlsconf *tls.Config, interval time.Duration, timeo
 
 	log.Printf("starting lease ping")
 
+	var lasterr error
+
 	for {
 		func() {
 			ctx, cancel := context.WithTimeout(context.Background(), timeout)
@@ -101,6 +103,7 @@ func leaseping(conn net.Conn, tlsconf *tls.Config, interval time.Duration, timeo
 			err := s.Ping(ctx)
 			if err != nil {
 				log.Printf("lease ping error %v", err)
+				lasterr = err
 				return
 			}
 
@@ -109,10 +112,17 @@ func leaseping(conn net.Conn, tlsconf *tls.Config, interval time.Duration, timeo
 		}()
 
 		time.Sleep(interval)
+
+		count--
+		if count == 0 {
+			break
+		}
 	}
+
+	return lasterr
 }
 
-func fabricping(conn net.Conn, tlsconf *tls.Config, interval time.Duration, timeout time.Duration) error {
+func fabricping(conn net.Conn, tlsconf *tls.Config, interval time.Duration, timeout time.Duration, count int) error {
 	log.Printf("starting fabric handshake and send init transport message")
 	c, err := transport.Connect(conn, transport.ClientConfig{
 		Config: transport.Config{
@@ -127,6 +137,7 @@ func fabricping(conn net.Conn, tlsconf *tls.Config, interval time.Duration, time
 
 	log.Printf("fabric level handshake success")
 
+	var lasterr error
 	for {
 		func() {
 			ctx, cancel := context.WithTimeout(context.Background(), timeout)
@@ -134,14 +145,22 @@ func fabricping(conn net.Conn, tlsconf *tls.Config, interval time.Duration, time
 			d, err := c.Ping(ctx)
 			if err != nil {
 				log.Printf("fabric heartbeat error: %v", err)
+				lasterr = err
 				return
 			}
 
 			log.Printf("fabric heartbeat response from %v time = %v", conn.RemoteAddr().String(), d)
 		}()
 
+		count--
+		if count == 0 {
+			break
+		}
+
 		time.Sleep(interval)
 	}
+
+	return lasterr
 }
 
 func main() {
@@ -172,7 +191,7 @@ Ping Lease:   FabricPing -l auto 10.0.0.4:1026
 			},
 			&cli.DurationFlag{
 				Name:    "interval",
-				Aliases: []string{"t"},
+				Aliases: []string{"i"},
 				Value:   time.Second * 2,
 			},
 			&cli.DurationFlag{
@@ -182,6 +201,12 @@ Ping Lease:   FabricPing -l auto 10.0.0.4:1026
 			&cli.BoolFlag{
 				Name:  "non-secure",
 				Value: false,
+			},
+			&cli.IntFlag{
+				Name:        "count",
+				Value:       0,
+				Usage:       "stop after <count> pings, set 0 for infinity",
+				DefaultText: "infinity",
 			},
 		},
 
@@ -262,15 +287,16 @@ Ping Lease:   FabricPing -l auto 10.0.0.4:1026
 
 			log.Printf("tcp connected, resolved address: %v, local address: %v", conn.RemoteAddr().String(), conn.LocalAddr().String())
 
+			count := c.Int("count")
 			leaseaddr := c.String("lease-addr")
 
 			if leaseaddr != "" {
 				log.Printf("starting lease ping, ctrl + c to break")
-				return leaseping(conn, tlsconf, interval, timeout, leaseaddr)
+				return leaseping(conn, tlsconf, interval, timeout, leaseaddr, count)
 			}
 
 			log.Printf("starting fabric ping, ctrl + c to break")
-			return fabricping(conn, tlsconf, interval, timeout)
+			return fabricping(conn, tlsconf, interval, timeout, count)
 		},
 	}
 
