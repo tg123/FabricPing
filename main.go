@@ -1,7 +1,6 @@
 package main
 
 import (
-	"context"
 	"crypto/sha1"
 	"crypto/tls"
 	"crypto/x509"
@@ -9,159 +8,10 @@ import (
 	"log"
 	"net"
 	"os"
-	"strings"
 	"time"
 
-	"github.com/tg123/phabrik/lease"
-	"github.com/tg123/phabrik/transport"
 	"github.com/urfave/cli/v2"
 )
-
-func guessLocalIp() (string, error) {
-	addrs, err := net.InterfaceAddrs()
-	if err != nil {
-		return "", err
-	}
-	for _, addr := range addrs {
-		var ip net.IP
-		switch v := addr.(type) {
-		case *net.IPNet:
-			ip = v.IP
-		case *net.IPAddr:
-			ip = v.IP
-		default:
-			continue
-		}
-
-		if ip.IsLoopback() {
-			continue
-		}
-
-		if ip.IsUnspecified() {
-			continue
-		}
-
-		if ip.To4() == nil {
-			continue
-		}
-
-		if !ip.IsPrivate() {
-			continue
-		}
-
-		return ip.String(), nil
-	}
-
-	return "", fmt.Errorf("no ip found")
-}
-
-func leaseping(conn net.Conn, tlsconf *tls.Config, interval time.Duration, timeout time.Duration, leaseaddr string, count int) error {
-	config := lease.AgentConfig{
-		TLS: tlsconf,
-	}
-	config.SetDefault()
-
-	if strings.ToLower(leaseaddr) == "auto" {
-		ip, err := guessLocalIp()
-		if err != nil {
-			return err
-		}
-		leaseaddr = net.JoinHostPort(ip, "0")
-	}
-
-	l, err := net.Listen("tcp", leaseaddr)
-	if err != nil {
-		return err
-	}
-
-	log.Printf("lease agent listening at [%v]", l.Addr().String())
-
-	agent, err := lease.NewAgent(config, l, func(addr string) (net.Conn, error) {
-		return conn, nil
-	})
-
-	if err != nil {
-		return err
-	}
-	defer agent.Close()
-	go agent.Wait()
-
-	s, err := agent.Establish(conn.RemoteAddr().String())
-	if err != nil {
-		return err
-	}
-
-	log.Printf("starting lease ping")
-
-	var lasterr error
-
-	for {
-		func() {
-			ctx, cancel := context.WithTimeout(context.Background(), timeout)
-			defer cancel()
-			now := time.Now()
-			err := s.Ping(ctx)
-			if err != nil {
-				log.Printf("lease ping error %v", err)
-				lasterr = err
-				return
-			}
-
-			d := s.LastPongTime().Sub(now)
-			log.Printf("lease pong from %v time = %v", conn.RemoteAddr().String(), d)
-		}()
-
-		time.Sleep(interval)
-
-		count--
-		if count == 0 {
-			break
-		}
-	}
-
-	return lasterr
-}
-
-func fabricping(conn net.Conn, tlsconf *tls.Config, interval time.Duration, timeout time.Duration, count int) error {
-	log.Printf("starting fabric handshake and send init transport message")
-	c, err := transport.Connect(conn, transport.ClientConfig{
-		Config: transport.Config{
-			TLS: tlsconf,
-		},
-	})
-	if err != nil {
-		log.Fatalf("fabric level handshake failed, error: %v", err)
-	}
-	defer c.Close()
-	go c.Wait()
-
-	log.Printf("fabric level handshake success")
-
-	var lasterr error
-	for {
-		func() {
-			ctx, cancel := context.WithTimeout(context.Background(), timeout)
-			defer cancel()
-			d, err := c.Ping(ctx)
-			if err != nil {
-				log.Printf("fabric heartbeat error: %v", err)
-				lasterr = err
-				return
-			}
-
-			log.Printf("fabric heartbeat response from %v time = %v", conn.RemoteAddr().String(), d)
-		}()
-
-		count--
-		if count == 0 {
-			break
-		}
-
-		time.Sleep(interval)
-	}
-
-	return lasterr
-}
 
 func main() {
 
@@ -173,10 +23,22 @@ func main() {
 Ping Lease:   FabricPing -l auto 10.0.0.4:1026
 		`,
 		Flags: []cli.Flag{
-			&cli.StringFlag{
-				Name:    "lease-addr",
+			&cli.BoolFlag{
+				Name:    "lease",
 				Aliases: []string{"l"},
-				Usage:   "Lease agent listening address, use [auto] to create one automatically",
+				Usage:   "ping a lease endpoint, [listen-addr] must be reachable from the remote lease server",
+				Value:   false,
+			},
+			&cli.BoolFlag{
+				Name:    "discover",
+				Aliases: []string{"d"},
+				Usage:   "discover nodes in the cluster, [listen-addr] must be reachable from the fabric server",
+				Value:   false,
+			},
+			&cli.StringFlag{
+				Name:  "listen-addr",
+				Usage: "lease agent (lease ping) or federation agent (discover) listening address, use [auto] to create one automatically",
+				Value: "auto",
 			},
 			&cli.StringFlag{
 				Name:        "cert",
@@ -213,8 +75,50 @@ Ping Lease:   FabricPing -l auto 10.0.0.4:1026
 		Action: func(c *cli.Context) error {
 
 			var remotetps []string
+			var certcache *tls.Certificate
+
+			findcert := func() (*tls.Certificate, error) {
+
+				if certcache != nil {
+					return certcache, nil
+				}
+
+				certkeyword := c.String("cert")
+				if certkeyword != "" {
+					cert, err := searchCert(certkeyword)
+					if err != nil {
+						return nil, fmt.Errorf("search cert return error: %v", err)
+					}
+
+					log.Printf("using certificate thumbprint [%v]", fmt.Sprintf("%x", sha1.Sum(cert.Certificate[0])))
+					return cert, nil
+				}
+
+				for _, remotetp := range remotetps {
+					if remotetp != "" {
+						log.Printf("discovering certificate on machine with thumbprint [%v]", remotetp)
+						cert, err := searchCert(remotetp)
+						if err != nil {
+							log.Printf("did not find certifcate thumbprint [%v], error: %v", remotetp, err)
+							continue
+						}
+
+						certcache = cert
+						return cert, nil
+					}
+				}
+
+				return nil, fmt.Errorf("did not find any certificate")
+			}
+
 			tlsconf := &tls.Config{
 				InsecureSkipVerify: true,
+				GetCertificate: func(chi *tls.ClientHelloInfo) (*tls.Certificate, error) {
+					return findcert()
+				},
+				GetClientCertificate: func(cri *tls.CertificateRequestInfo) (*tls.Certificate, error) {
+					return findcert()
+				},
 				VerifyPeerCertificate: func(rawCerts [][]byte, verifiedChains [][]*x509.Certificate) error {
 					for _, rawCert := range rawCerts {
 						cert, err := x509.ParseCertificate(rawCert)
@@ -233,33 +137,6 @@ Ping Lease:   FabricPing -l auto 10.0.0.4:1026
 						log.Printf("remote site is presenting certificate [CN=%v] [expired=%v] [not before=%v] [not after=%v] [thumbprint=%v]", cert.Subject.CommonName, !valid, cert.NotBefore, cert.NotAfter, thumb)
 					}
 					return nil
-				},
-				GetClientCertificate: func(cri *tls.CertificateRequestInfo) (*tls.Certificate, error) {
-					certkeyword := c.String("cert")
-					if certkeyword != "" {
-						cert, err := searchCert(certkeyword)
-						if err != nil {
-							return nil, fmt.Errorf("search cert return error: %v", err)
-						}
-
-						log.Printf("using certificate thumbprint [%v]", fmt.Sprintf("%x", sha1.Sum(cert.Certificate[0])))
-						return cert, nil
-					}
-
-					for _, remotetp := range remotetps {
-						if remotetp != "" {
-							log.Printf("discovering certificate on machine with thumbprint [%v]", remotetp)
-							cert, err := searchCert(remotetp)
-							if err != nil {
-								log.Printf("did not find certifcate thumbprint [%v], error: %v", remotetp, err)
-								continue
-							}
-
-							return cert, nil
-						}
-					}
-
-					return nil, fmt.Errorf("did not find any certificate")
 				},
 			}
 
@@ -287,16 +164,32 @@ Ping Lease:   FabricPing -l auto 10.0.0.4:1026
 
 			log.Printf("tcp connected, resolved address: %v, local address: %v", conn.RemoteAddr().String(), conn.LocalAddr().String())
 
-			count := c.Int("count")
-			leaseaddr := c.String("lease-addr")
+			mode := 0
 
-			if leaseaddr != "" {
-				log.Printf("starting lease ping, ctrl + c to break")
-				return leaseping(conn, tlsconf, interval, timeout, leaseaddr, count)
+			if c.Bool("lease") {
+				mode |= 0b01
 			}
 
-			log.Printf("starting fabric ping, ctrl + c to break")
-			return fabricping(conn, tlsconf, interval, timeout, count)
+			if c.Bool("discover") {
+				mode |= 0b10
+			}
+
+			count := c.Int("count")
+			listenaddr := c.String("listen-addr")
+
+			switch mode {
+			case 0b11:
+				return fmt.Errorf("cannot use --lease and --discover together")
+			case 0b01:
+				log.Printf("starting lease ping, ctrl + c to break")
+				return leaseping(conn, tlsconf, interval, timeout, listenaddr, count)
+			case 0b10:
+				log.Printf("starting discovering, ctrl + c to break")
+				return discover(conn, tlsconf, listenaddr)
+			default:
+				log.Printf("starting fabric ping, ctrl + c to break")
+				return fabricping(conn, tlsconf, interval, timeout, count)
+			}
 		},
 	}
 
