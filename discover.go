@@ -83,6 +83,9 @@ func discover(conn net.Conn, tlsconf *tls.Config, fabricaddr string) error {
 
 	zero := federation.NodeID{}
 
+	fmt.Printf("%v\t%v\t%v", "InstanceId", "Address", "Phase")
+	fmt.Println()
+
 	for _, p := range parteners {
 		if p.Instance.Id == fakeid {
 			continue

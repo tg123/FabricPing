@@ -20,7 +20,8 @@ func main() {
 		Usage:     "Ping a Fabric/FabricLease endpoint",
 		UsageText: "FabricPing [OPTIONS] <address:port>",
 		Description: `Ping Fabric:  FabricPing 10.0.0.4:1025
-Ping Lease:   FabricPing -l auto 10.0.0.4:1026
+Ping Lease:   FabricPing -l 10.0.0.4:1026
+Discover:   FabricPing -d 10.0.0.4:1025
 		`,
 		Flags: []cli.Flag{
 			&cli.BoolFlag{
