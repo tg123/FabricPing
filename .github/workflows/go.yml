@@ -19,12 +19,17 @@ jobs:
       with:
         go-version: 1.18
 
-    - name: Build
-      run: |
-        go build -v ./...
-        
+    - uses: dotnet/nbgv@master
+      with:
+        setAllVars: true
+
 #     - name: Test
 #       run: go test -v ./...        
+
+    - name: Build Linux
+      if: runner.os != 'Windows'
+      run: |
+        go build -ldflags "-X main.mainver=$NBGV_NuGetPackageVersion" -v ./...
 
     - name: Pack Linux
       if: runner.os != 'Windows'
@@ -36,6 +41,11 @@ jobs:
       uses: actions/upload-artifact@v2
       with:
         path: FabricPing_linux_x64.tar.gz
+
+    - name: Build Linux
+      if: runner.os == 'Windows'
+      run: |
+        go build -ldflags "-X main.mainver=$env:NBGV_NuGetPackageVersion" -v ./...
 
     - name: Pack Windows
       if: runner.os == 'Windows'
