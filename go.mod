@@ -1,6 +1,6 @@
 module FabricPing
 
-go 1.17
+go 1.18
 
 require (
 	github.com/tg123/certstore v0.1.2
