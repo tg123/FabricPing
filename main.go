@@ -8,10 +8,36 @@ import (
 	"log"
 	"net"
 	"os"
+	"runtime/debug"
 	"time"
 
 	"github.com/urfave/cli/v2"
 )
+
+var mainver string = "(devel)"
+
+func version() string {
+
+	var v = mainver
+
+	bi, ok := debug.ReadBuildInfo()
+	if !ok {
+		return v
+	}
+
+	for _, s := range bi.Settings {
+		switch s.Key {
+		case "vcs.revision":
+			v = fmt.Sprintf("%v, %v", v, s.Value[:9])
+		case "vcs.time":
+			v = fmt.Sprintf("%v, %v", v, s.Value)
+		}
+	}
+
+	v = fmt.Sprintf("%v, %v", v, bi.GoVersion)
+
+	return v
+}
 
 func main() {
 
@@ -19,10 +45,11 @@ func main() {
 		Name:      "Fabric Ping",
 		Usage:     "Ping a Fabric/FabricLease endpoint",
 		UsageText: "FabricPing [OPTIONS] <address:port>",
-		Description: `Ping Fabric:  FabricPing 10.0.0.4:1025
-Ping Lease:   FabricPing -l 10.0.0.4:1026
-Discover:   FabricPing -d 10.0.0.4:1025
+		Description: `Ping Fabric:  FabricPing 127.0.0.1:1025
+Ping Lease:   FabricPing -l 127.0.0.1:1026
+Discover:     FabricPing -d 127.0.0.1:1025
 		`,
+		Version: version(),
 		Flags: []cli.Flag{
 			&cli.BoolFlag{
 				Name:    "lease",
