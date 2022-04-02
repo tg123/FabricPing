@@ -31,7 +31,7 @@ jobs:
     - name: Build Linux
       if: runner.os != 'Windows'
       run: |
-        go build -ldflags "-X main.mainver=$NBGV_NuGetPackageVersion" -v ./...
+        go build -ldflags "-X main.mainver=$NBGV_SimpleVersion" -v ./...
 
     - name: Pack Linux
       if: runner.os != 'Windows'
@@ -47,7 +47,7 @@ jobs:
     - name: Build Linux
       if: runner.os == 'Windows'
       run: |
-        go build -ldflags "-X main.mainver=$env:NBGV_NuGetPackageVersion" -v ./...
+        go build -ldflags "-X main.mainver=$env:NBGV_SimpleVersion" -v ./...
 
     - name: Pack Windows
       if: runner.os == 'Windows'
@@ -80,5 +80,5 @@ jobs:
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}    
       run: |
-        gh release create v$NBGV_NuGetPackageVersion artifact/*
+        gh release create v$NBGV_SimpleVersion artifact/*
     
