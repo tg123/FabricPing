@@ -31,7 +31,7 @@ jobs:
     - name: Build Linux
       if: runner.os != 'Windows'
       run: |
-        go build -ldflags "-X main.mainver=$NBGV_SimpleVersion" -v ./...
+        CGO_ENABLED=0 go build -ldflags "-X main.mainver=$NBGV_SimpleVersion" -v ./...
 
     - name: Pack Linux
       if: runner.os != 'Windows'
