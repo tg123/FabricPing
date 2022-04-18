@@ -39,6 +39,79 @@ func version() string {
 	return v
 }
 
+func getTlsConfig(conn net.Conn, c *cli.Context) *tls.Config {
+	if c.Bool("non-secure") {
+		return nil
+	}
+
+	var remotetps []string
+	var certcache *tls.Certificate
+
+	findcert := func() (*tls.Certificate, error) {
+
+		if certcache != nil {
+			return certcache, nil
+		}
+
+		certkeyword := c.String("cert")
+		if certkeyword != "" {
+			cert, err := searchCert(certkeyword)
+			if err != nil {
+				return nil, fmt.Errorf("search cert return error: %v", err)
+			}
+
+			log.Printf("using certificate thumbprint [%v]", fmt.Sprintf("%x", sha1.Sum(cert.Certificate[0])))
+			return cert, nil
+		}
+
+		for _, remotetp := range remotetps {
+			if remotetp != "" {
+				log.Printf("discovering certificate on machine with thumbprint [%v]", remotetp)
+				cert, err := searchCert(remotetp)
+				if err != nil {
+					log.Printf("did not find certifcate thumbprint [%v], error: %v", remotetp, err)
+					continue
+				}
+
+				certcache = cert
+				return cert, nil
+			}
+		}
+
+		return nil, fmt.Errorf("did not find any certificate")
+	}
+
+	return &tls.Config{
+		InsecureSkipVerify: true,
+		GetCertificate: func(chi *tls.ClientHelloInfo) (*tls.Certificate, error) {
+			return findcert()
+		},
+		GetClientCertificate: func(cri *tls.CertificateRequestInfo) (*tls.Certificate, error) {
+			return findcert()
+		},
+		VerifyPeerCertificate: func(rawCerts [][]byte, verifiedChains [][]*x509.Certificate) error {
+			remotetps = nil
+			for _, rawCert := range rawCerts {
+				cert, err := x509.ParseCertificate(rawCert)
+
+				if err != nil {
+					log.Printf("error read remote cert error %v", err)
+					continue
+				}
+
+				valid := true
+				valid = valid && !time.Now().After(cert.NotAfter)
+				valid = valid && !time.Now().Before(cert.NotBefore)
+
+				thumb := fmt.Sprintf("%x", sha1.Sum(rawCert))
+				remotetps = append(remotetps, thumb)
+				log.Printf("[%v] is presenting certificate [CN=%v] [expired=%v] [not before=%v] [not after=%v] [thumbprint=%v]", conn.RemoteAddr().String(), cert.Subject.CommonName, !valid, cert.NotBefore, cert.NotAfter, thumb)
+			}
+			return nil
+		},
+	}
+}
+
 func main() {
 
 	app := &cli.App{
@@ -102,80 +175,10 @@ Discover:     FabricPing -d 127.0.0.1:1025
 
 		Action: func(c *cli.Context) error {
 
-			var remotetps []string
-			var certcache *tls.Certificate
-
-			findcert := func() (*tls.Certificate, error) {
-
-				if certcache != nil {
-					return certcache, nil
-				}
-
-				certkeyword := c.String("cert")
-				if certkeyword != "" {
-					cert, err := searchCert(certkeyword)
-					if err != nil {
-						return nil, fmt.Errorf("search cert return error: %v", err)
-					}
-
-					log.Printf("using certificate thumbprint [%v]", fmt.Sprintf("%x", sha1.Sum(cert.Certificate[0])))
-					return cert, nil
-				}
-
-				for _, remotetp := range remotetps {
-					if remotetp != "" {
-						log.Printf("discovering certificate on machine with thumbprint [%v]", remotetp)
-						cert, err := searchCert(remotetp)
-						if err != nil {
-							log.Printf("did not find certifcate thumbprint [%v], error: %v", remotetp, err)
-							continue
-						}
-
-						certcache = cert
-						return cert, nil
-					}
-				}
-
-				return nil, fmt.Errorf("did not find any certificate")
-			}
-
-			tlsconf := &tls.Config{
-				InsecureSkipVerify: true,
-				GetCertificate: func(chi *tls.ClientHelloInfo) (*tls.Certificate, error) {
-					return findcert()
-				},
-				GetClientCertificate: func(cri *tls.CertificateRequestInfo) (*tls.Certificate, error) {
-					return findcert()
-				},
-				VerifyPeerCertificate: func(rawCerts [][]byte, verifiedChains [][]*x509.Certificate) error {
-					for _, rawCert := range rawCerts {
-						cert, err := x509.ParseCertificate(rawCert)
-
-						if err != nil {
-							log.Printf("error read remote cert error %v", err)
-							continue
-						}
-
-						valid := true
-						valid = valid && !time.Now().After(cert.NotAfter)
-						valid = valid && !time.Now().Before(cert.NotBefore)
-
-						thumb := fmt.Sprintf("%x", sha1.Sum(rawCert))
-						remotetps = append(remotetps, thumb)
-						log.Printf("remote site is presenting certificate [CN=%v] [expired=%v] [not before=%v] [not after=%v] [thumbprint=%v]", cert.Subject.CommonName, !valid, cert.NotBefore, cert.NotAfter, thumb)
-					}
-					return nil
-				},
-			}
-
 			addr := c.Args().First()
 
 			if addr == "" {
 				return cli.ShowAppHelp(c)
-			}
-
-			if c.Bool("non-secure") {
-				tlsconf = nil
 			}
 
 			timeout := c.Duration("timeout")
@@ -210,13 +213,13 @@ Discover:     FabricPing -d 127.0.0.1:1025
 				return fmt.Errorf("cannot use --lease and --discover together")
 			case 0b01:
 				log.Printf("starting lease ping, ctrl + c to break")
-				return leaseping(conn, tlsconf, interval, timeout, listenaddr, count)
+				return leaseping(conn, getTlsConfig(conn, c), interval, timeout, listenaddr, count)
 			case 0b10:
 				log.Printf("starting discovering, ctrl + c to break")
-				return discover(conn, tlsconf, listenaddr)
+				return discover(conn, getTlsConfig(conn, c), listenaddr)
 			default:
 				log.Printf("starting fabric ping, ctrl + c to break")
-				return fabricping(conn, tlsconf, interval, timeout, count)
+				return fabricping(conn, getTlsConfig(conn, c), interval, timeout, count)
 			}
 		},
 	}
