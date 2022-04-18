@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log"
 	"net"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -76,7 +77,7 @@ func discover(conn net.Conn, tlsconf *tls.Config, fabricaddr string) error {
 	go sitenode.Serve()
 	defer sitenode.Close()
 
-	parteners, err := sitenode.Discover(context.Background())
+	partners, err := sitenode.Discover(context.Background())
 	if err != nil {
 		return err
 	}
@@ -86,7 +87,11 @@ func discover(conn net.Conn, tlsconf *tls.Config, fabricaddr string) error {
 	fmt.Printf("%v\t%v\t%v", "InstanceId", "Address", "Phase")
 	fmt.Println()
 
-	for _, p := range parteners {
+	sort.Slice(partners, func(i, j int) bool {
+		return strings.Compare(partners[i].Address, partners[j].Address) > 0 
+	})
+
+	for _, p := range partners {
 		if p.Instance.Id == fakeid {
 			continue
 		}
