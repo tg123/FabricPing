@@ -14,15 +14,27 @@ import (
 	"github.com/tg123/phabrik/federation"
 	"github.com/tg123/phabrik/lease"
 	"github.com/tg123/phabrik/transport"
+	"github.com/urfave/cli/v2"
 )
 
-func discover(conn net.Conn, tlsconf *tls.Config, fabricaddr string) error {
+func discover(conn net.Conn, tlsconf *tls.Config, fabricaddr string, c *cli.Context) error {
 	if strings.ToLower(fabricaddr) == "auto" {
 		ip, err := guessLocalIp()
 		if err != nil {
 			return err
 		}
 		fabricaddr = net.JoinHostPort(ip, "0")
+	}
+
+	log.Printf("starting fabric handshake and send init transport message")
+	_, err := transport.Connect(conn, transport.ClientConfig{
+		Config: transport.Config{
+			TLS: tlsconf,
+		},
+	})
+	if err != nil {
+		log.Fatalf("fabric level handshake failed, error: %v", err)
+		return err
 	}
 
 	s, err := transport.ListenTCP(fabricaddr, transport.ServerConfig{
@@ -54,8 +66,23 @@ func discover(conn net.Conn, tlsconf *tls.Config, fabricaddr string) error {
 	fakeid := federation.NodeIDFromMD5(strconv.Itoa(now))
 	myid := federation.NodeIDFromMD5("FabricPing")
 
+	timeout := c.Duration("timeout")
+
 	config := federation.SiteNodeConfig{
-		ClientTLS:       tlsconf,
+		ClientDialer: func(addr string) (*transport.Client, error) {
+			conn, err := net.DialTimeout("tcp", addr, timeout)
+			if err != nil {
+				return nil, fmt.Errorf("cannot establish tcp connection to %v error: %v", addr, err)
+			}
+
+			log.Printf("voteping tcp connected, resolved address: %v, local address: %v", conn.RemoteAddr().String(), conn.LocalAddr().String())
+
+			return transport.Connect(conn, transport.ClientConfig{
+				Config: transport.Config{
+					TLS: getTlsConfig(conn, c),
+				},
+			})
+		},
 		TransportServer: s,
 		LeaseAgent:      l,
 		Instance: federation.NodeInstance{
@@ -88,7 +115,7 @@ func discover(conn net.Conn, tlsconf *tls.Config, fabricaddr string) error {
 	fmt.Println()
 
 	sort.Slice(partners, func(i, j int) bool {
-		return strings.Compare(partners[i].Address, partners[j].Address) > 0 
+		return strings.Compare(partners[i].Address, partners[j].Address) < 0
 	})
 
 	for _, p := range partners {

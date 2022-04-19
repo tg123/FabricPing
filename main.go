@@ -9,6 +9,7 @@ import (
 	"net"
 	"os"
 	"runtime/debug"
+	"sync"
 	"time"
 
 	"github.com/urfave/cli/v2"
@@ -39,33 +40,45 @@ func version() string {
 	return v
 }
 
+var certcache sync.Map
+
 func getTlsConfig(conn net.Conn, c *cli.Context) *tls.Config {
 	if c.Bool("non-secure") {
 		return nil
 	}
 
 	var remotetps []string
-	var certcache *tls.Certificate
 
 	findcert := func() (*tls.Certificate, error) {
 
-		if certcache != nil {
-			return certcache, nil
-		}
-
 		certkeyword := c.String("cert")
 		if certkeyword != "" {
+
+			cachecert, ok := certcache.Load(certkeyword)
+			if ok {
+				return cachecert.(*tls.Certificate), nil
+			}
+
 			cert, err := searchCert(certkeyword)
 			if err != nil {
 				return nil, fmt.Errorf("search cert return error: %v", err)
 			}
 
 			log.Printf("using certificate thumbprint [%v]", fmt.Sprintf("%x", sha1.Sum(cert.Certificate[0])))
+
+			certcache.Store(certkeyword, cert)
+
 			return cert, nil
 		}
 
 		for _, remotetp := range remotetps {
 			if remotetp != "" {
+
+				cachecert, ok := certcache.Load(remotetp)
+				if ok {
+					return cachecert.(*tls.Certificate), nil
+				}
+
 				log.Printf("discovering certificate on machine with thumbprint [%v]", remotetp)
 				cert, err := searchCert(remotetp)
 				if err != nil {
@@ -73,7 +86,8 @@ func getTlsConfig(conn net.Conn, c *cli.Context) *tls.Config {
 					continue
 				}
 
-				certcache = cert
+				certcache.Store(remotetp, cert)
+
 				return cert, nil
 			}
 		}
@@ -216,7 +230,7 @@ Discover:     FabricPing -d 127.0.0.1:1025
 				return leaseping(conn, getTlsConfig(conn, c), interval, timeout, listenaddr, count)
 			case 0b10:
 				log.Printf("starting discovering, ctrl + c to break")
-				return discover(conn, getTlsConfig(conn, c), listenaddr)
+				return discover(conn, getTlsConfig(conn, c), listenaddr, c)
 			default:
 				log.Printf("starting fabric ping, ctrl + c to break")
 				return fabricping(conn, getTlsConfig(conn, c), interval, timeout, count)
