@@ -118,6 +118,8 @@ func discover(conn net.Conn, tlsconf *tls.Config, fabricaddr string, c *cli.Cont
 		return strings.Compare(partners[i].Address, partners[j].Address) < 0
 	})
 
+	found := false
+
 	for _, p := range partners {
 		if p.Instance.Id == fakeid {
 			continue
@@ -134,11 +136,12 @@ func discover(conn net.Conn, tlsconf *tls.Config, fabricaddr string, c *cli.Cont
 		}
 
 		fmt.Println()
+		found = true
 	}
 
-	if len(partners) == 0 {
+	if !found {
 		fmt.Println()
-		fmt.Println("!! Seems your node is in Zombie mode, please check StartStopNode.txt in your fabric data directory !!")
+		fmt.Println("!! Seems the node is in Zombie mode, please delete StartStopNode.txt in the fabric data directory !!")
 		fmt.Println()
 	}
 
