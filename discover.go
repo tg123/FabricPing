@@ -134,7 +134,12 @@ func discover(conn net.Conn, tlsconf *tls.Config, fabricaddr string, c *cli.Cont
 		}
 
 		fmt.Println()
+	}
 
+	if len(partners) == 0 {
+		fmt.Println()
+		fmt.Println("!! Seems your node is in Zombie mode, please check StartStopNode.txt in your fabric data directory !!")
+		fmt.Println()
 	}
 
 	return nil
