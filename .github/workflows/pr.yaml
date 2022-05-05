@@ -27,5 +27,5 @@ jobs:
     - name: E2E Windows
       shell: pwsh
       run: |
-        powershell "$env:ProgramFiles\Microsoft SDKs\Service Fabric\ClusterSetup\DevClusterSetup.ps1" -AsSecure -Auto
+        powershell -Command { & "$env:ProgramFiles\Microsoft SDKs\Service Fabric\ClusterSetup\DevClusterSetup.ps1" -AsSecure -Auto }
         if ((.\FabricPing.exe -d 127.0.0.1:19002 | sls NodePhaseRouting | measure).Count -ne 5) { exit 1}
