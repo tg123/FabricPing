@@ -1,0 +1,31 @@
+name: Windows E2E
+
+on:
+  pull_request:
+    types: [assigned, opened, synchronize, reopened]
+    
+jobs:
+
+  build:
+    runs-on: windows-latest
+
+    steps:
+    - uses: actions/checkout@v2
+      with:
+        fetch-depth: 0
+        
+    - name: Set up Go
+      uses: actions/setup-go@v2
+      with:
+        go-version: 1.18
+
+ 
+    - name: Build Windows
+      run: |
+        go build ./...
+        
+    - name: E2E Windows
+      shell: pwsh
+      run: |
+        powershell "$env:ProgramFiles\Microsoft SDKs\Service Fabric\ClusterSetup\DevClusterSetup.ps1" -AsSecure -Auto
+        if ((.\FabricPing.exe -d 127.0.0.1:19002 | sls NodePhaseRouting | measure).Count -ne 5) { exit 1}
