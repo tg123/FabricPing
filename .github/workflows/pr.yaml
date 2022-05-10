@@ -1,0 +1,38 @@
+name: Windows E2E
+
+on:
+  pull_request:
+    types: [assigned, opened, synchronize, reopened]
+    
+jobs:
+
+  build:
+    runs-on: windows-latest
+
+    steps:
+    - uses: actions/checkout@v3
+        
+    - name: Set up Go
+      uses: actions/setup-go@v2
+      with:
+        go-version: 1.18
+
+ 
+    - name: Build Windows
+      run: |
+        go build ./...
+        
+    - name: E2E Windows
+      shell: pwsh
+      run: |
+        powershell -Command { & "$env:ProgramFiles\Microsoft SDKs\Service Fabric\ClusterSetup\DevClusterSetup.ps1" -CreateOneNodeCluster -Auto -ErrorAction Continue }
+        # & "C:\Program Files\Microsoft Service Fabric\bin\FabricHost.exe" -c
+        Start-Service FabricHostSvc -Verbose
+        
+        #if ((.\FabricPing.exe -d 127.0.0.1:19002 | sls NodePhaseRouting | measure).Count -ne 5) { exit 1}
+        exit 0
+        
+    - name: Upload a Build Artifact
+      uses: actions/upload-artifact@v2
+      with:
+        path: C:\SfDevCluster\Log
