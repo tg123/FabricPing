@@ -26,7 +26,9 @@ jobs:
       shell: pwsh
       run: |
         powershell -Command { & "$env:ProgramFiles\Microsoft SDKs\Service Fabric\ClusterSetup\DevClusterSetup.ps1" -CreateOneNodeCluster -Auto -ErrorAction Continue }
-        & "C:\Program Files\Microsoft Service Fabric\bin\FabricHost.exe" -c
+        # & "C:\Program Files\Microsoft Service Fabric\bin\FabricHost.exe" -c
+        Start-Service FabricHostSvc -Verbose
+        
         #if ((.\FabricPing.exe -d 127.0.0.1:19002 | sls NodePhaseRouting | measure).Count -ne 5) { exit 1}
         exit 0
         
