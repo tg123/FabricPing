@@ -17,8 +17,8 @@ github.com/sigurn/crc8 v0.0.0-20220107193325-2243fe600f9f/go.mod h1:vQhwQ4meQEDf
 github.com/stretchr/testify v1.7.0 h1:nwc3DEeHmmLAfoZucVR881uASk0Mfjw8xYJ99tb5CcY=
 github.com/tg123/certstore v0.1.2 h1:jjh+mJUSsASJ2mcVOWEfS2c1M0aIYBw0T+SkHhtphIk=
 github.com/tg123/certstore v0.1.2/go.mod h1:I2z00+kf7q974H0wqU4CxJtqbtQqXj15hFf3hgWgcK8=
-github.com/tg123/phabrik v0.0.0-20220101024935-4b82f001cb70 h1:AGcWKIF5M1VzTRoi1Xnxib14A/Ac4A8QgzrqZalwr/o=
-github.com/tg123/phabrik v0.0.0-20220101024935-4b82f001cb70/go.mod h1:SxC3jJlhYfkf+a084UCIaBsCnLBMfEP4GAAHZk8mBjw=
+github.com/tg123/phabrik v0.0.0-20220523174228-be93015c6806 h1:v7mej0s57+kuXyvqtd4818X+tYVqabtshaEShZEUts0=
+github.com/tg123/phabrik v0.0.0-20220523174228-be93015c6806/go.mod h1:h2lgmzvL+kDagPEUxD2t/bf12aQy+gOZ+PnouUZEzUs=
 github.com/urfave/cli/v2 v2.3.0 h1:qph92Y649prgesehzOrQjdWyxFOp/QVM+6imKHad91M=
 github.com/urfave/cli/v2 v2.3.0/go.mod h1:LJmUH05zAU44vOAcrfzZQKsZbVcdbOG8rtL3/XcUArI=
 golang.org/x/sys v0.0.0-20220128215802-99c3d69c2c27 h1:XDXtA5hveEEV8JB2l7nhMTp3t3cHp9ZpwcdjqyEWLlo=

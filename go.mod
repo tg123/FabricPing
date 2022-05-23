@@ -4,7 +4,7 @@ go 1.18
 
 require (
 	github.com/tg123/certstore v0.1.2
-	github.com/tg123/phabrik v0.0.0-20220101024935-4b82f001cb70
+	github.com/tg123/phabrik v0.0.0-20220523174228-be93015c6806
 	github.com/urfave/cli/v2 v2.3.0
 )
 
